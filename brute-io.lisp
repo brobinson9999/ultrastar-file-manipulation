@@ -1,12 +1,13 @@
 (defun read-file (filename)
   (with-open-file (in filename)
     (with-standard-io-syntax
-      (let ((total-result NIL) (this-result NIL))
+      (let ((line-list NIL) (this-result NIL))
       	(do () (NIL)
-      		(setf this-result (read-line in NIL))
-      		(unless this-result (return (format NIL "~{~a~^~%~}" (nreverse total-result))))
-      		(push this-result total-result)
-      	)))))
+	    (multiple-value-bind (line eof) (read-line in NIL)
+				 (when line (push line line-list))
+				 (unless line (return (format NIL "~{~a~%~}" (nreverse line-list))))
+				 (when eof (return (format NIL "~{~a~^~%~}" (nreverse line-list))))
+				 ))))))
 
 (defun read-file-form (filename)
   (with-open-file (in filename)
@@ -18,6 +19,5 @@
                    :direction :output
                    :if-exists :supersede)
     (with-standard-io-syntax
-      (format out contents))))
+      (format out "~a" contents))))
       
-

@@ -4,18 +4,6 @@
 (load "brute-io.lisp")
 (load "split-sequence.lisp")
 
-(load "../mk-defsystem/defsystem.lisp")
-
-(load "../lispbuilder-regex/regex.translations")
-(load "../lispbuilder-regex/regex.system")
-(lc-regex)
-
-(load "../lispbuilder-lexer/lexer.translations")
-(load "../lispbuilder-lexer/lexer.system")
-(lc-lexer)
-
-(use-package :lispbuilder-lexer)
-
 ; an ultrastar-data is a plist. The following properties are recognized:
 ; title: (string) the title of the song (displayed in-game)
 ; artist: (string) the artist of the song (displayed in-game)
@@ -39,19 +27,6 @@
 ; note-length is a number indicating the length of the note.
 ; note-pitch is a number indicating the pitch of the note.
 ; lyrics is a string containing the lyrics for this note.
-
-; parse-ultrastar-file: string -> ultrastar-data
-; purpose: consumes a filename, and produces ultrastar-data representing
-; the contents of that file.
-(defun parse-ultrastar-file (file-name)
-  (parse-ultrastar-string (read-file file-name)))
-
-; parse-ultrastar-string: string -> ultrastar-data
-; purpose: consumes a string representing in the format of
-; an ultrastar song file, and produces structured ultrastar-data
-; representing the contents of the file.
-(defun parse-ultrastar-string (input-string)
-  NIL)
 
 ; generate-ultrastar-header-data: ultrastar-data symbol string -> string
 ; purpose: consumes an ultrastar-data structure, the key of one of it's properties,
@@ -78,12 +53,15 @@
 	  (:normal (format NIL ": ~a ~a ~a ~a" note-start note-length note-pitch lyrics))
 	  (:golden (format NIL "* ~a ~a ~a ~a" note-start note-length note-pitch lyrics))
 	  (:freestyle (format NIL "F ~a ~a ~a ~a" note-start note-length note-pitch lyrics))
-	  (:line-break (format NIL "- ~a ~a" note-start note-length)))))
+	  (:line-break (if (= note-length 0)
+			   (format NIL "- ~a" note-start)
+			 (format NIL "- ~a ~a" note-start note-length))))))
 
 (is (generate-ultrastar-note-string '(:normal 1 2 3 "meow")) ": 1 2 3 meow")
 (is (generate-ultrastar-note-string '(:golden 3 2 1 "gold")) "* 3 2 1 gold")
 (is (generate-ultrastar-note-string '(:freestyle 3 2 1 "free")) "F 3 2 1 free")
 (is (generate-ultrastar-note-string '(:line-break 3 2 1 "lb")) "- 3 2")
+(is (generate-ultrastar-note-string '(:line-break 3 0 0 "")) "- 3")
 
 ; generate-ultrastar-string: ultrastar-data -> string
 ; purpose: consumes structured ultrastar-data and produces a string representing
@@ -126,21 +104,160 @@
 (defun generate-ultrastar-file (file-name input-data)
   (write-file file-name (generate-ultrastar-string input-data)))
 
-(deflexer example-lexer
-    ("[0-9]+([.][0-9]+([Ee][0-9]+)?)"
-      (return (values 'flt (num %0))))
-    ("[0-9]+"
-      (return (values 'int (int %0))))
-    ("[:alpha:][:alnum:]*"
-      (return (values 'name %0)))
-    ("[:space:]+"))
+; string-starts-with: string string -> boolean
+; purpose: produces true if the second string starts with the
+; same characters as the first string.
+(defun string-starts-with (start-string input-string)
+  (cond ((< (length input-string) (length start-string)) NIL)
+	(T (equalp start-string (subseq input-string 0 (length start-string))))))
 
-(defparameter *exlex* (example-lexer "1.0 12 fred 10.23e5"))
-;(is (multiple-value-list (funcall *exlex*)) '(flt 1.0))
-;(is (multiple-value-list (funcall *exlex*)) '(int 12))
-;(is (multiple-value-list (funcall *exlex*)) '(name "fred"))
-;(is (multiple-value-list (funcall *exlex*)) '(flt 10.23e5))
-;(is (multiple-value-list (funcall *exlex*)) '(NIL NIL))
+(is (string-starts-with "" "") T)
+(is (string-starts-with "a" "a") T)
+(is (string-starts-with "ab" "abab") T)
+(is (string-starts-with "abab" "baba") NIL)
+(is (string-starts-with "baba" "bab") NIL)
 
+; string-chomp: string string -> string
+; purpose: consumes a string to chomp and a string to chomp
+; it from. Produces the second string with the length of the
+; first string removed from it's start. The second string does
+; not have to start with the first string, only the length of
+; the first string is used. If the length of the first string
+; is greater than the length of the second string, the empty
+; string is produced.
+(defun string-chomp (start-string input-string)
+  (cond ((<= (length input-string) (length start-string)) "")
+	(T (subseq input-string (length start-string) (length input-string)))))
+
+(is (string-chomp "" "") "")
+(is (string-chomp "a" "a") "")
+(is (string-chomp "a" "ab") "b")
+(is (string-chomp "aaa" "b") "")
+(is (string-chomp "abab" "ababab") "ab")
+
+; a condition raised when a line of a song file is not valid
+(define-condition invalid-song-file-line (error)
+  ((text :initarg :text :reader text)))
+
+; parse-ultrastar-notes: (listof string) -> (listof ultrastar-note-data)
+; purpose: consumes a list of strings in the Ultrastar song file format,
+; consisting only of notes, and produces a list of ultrastar-note-data
+; representing the same notes
+(defun parse-ultrastar-notes (input-list)
+  (cond
+   ((eql input-list NIL) NIL)
+   ((string-starts-with "E" (first input-list)) NIL)
+   (T (cons (parse-ultrastar-note (first input-list)) (parse-ultrastar-notes (rest input-list))))))
+
+; parse-ultrastar-note: string -> ultrastar-note-data
+; purpose: consumes a string representing a single note
+; in the Ultrastar song file format, and produces the
+; ultrastar-note-data representing that same note
+(defun parse-ultrastar-note (note-string)
+  (let ((note-list (split-sequence:split-sequence #\Space note-string)))
+    (list (cond ((equalp (first note-list) ":") :normal)
+		((equalp (first note-list) "*") :golden)
+		((equalp (first note-list) "F") :freestyle)
+		((equalp (first note-list) "-") :line-break)
+		(T (error 'invalid-song-file-line :text (first note-list))))
+	  (if (second note-list) (parse-integer (second note-list)) 0)
+	  (if (third note-list) (parse-integer (third note-list)) 0)
+	  (if (fourth note-list) (parse-integer (fourth note-list)) 0)
+	  (format NIL "~{~a~^ ~}" (cddddr note-list)))))
+
+(is (parse-ultrastar-note ":") '(:normal 0 0 0 ""))
+(is (parse-ultrastar-note "F 0 4 20 I") '(:freestyle 0 4 20 "I"))
+(is (parse-ultrastar-note ": 0 4 20 I") '(:normal 0 4 20 "I"))
+(is (parse-ultrastar-note ": 0 4 20 I just") '(:normal 0 4 20 "I just"))
+(is (parse-ultrastar-note "* 20 24 200 I just") '(:golden 20 24 200 "I just"))
+
+; parse-ultrastar-lines: (listof string) -> ultrastar-data
+; purpose: consumes a list of strings in the format of
+; an ultrastar song file, and produces structured ultrastar-data
+; representing the contents of the file. Each element of the input
+; list is one line of the song file.
+(defun parse-ultrastar-lines (input-list)
+  (cond
+   ((eql input-list NIL) NIL)
+   ((string-starts-with "E" (first input-list)) NIL)
+   ((string-starts-with "#TITLE:" (first input-list))
+    (add-str-prop-and-recurse "#TITLE:" :title input-list))
+   ((string-starts-with "#ARTIST:" (first input-list))
+    (add-str-prop-and-recurse "#ARTIST:" :artist input-list))
+   ((string-starts-with "#MP3:" (first input-list))
+    (add-str-prop-and-recurse "#MP3:" :mp3 input-list))
+   ((string-starts-with "#BPM:" (first input-list))
+    (add-num-prop-and-recurse "#BPM:" :bpm input-list))
+   ((string-starts-with "#GAP:" (first input-list))
+    (add-num-prop-and-recurse "#GAP:" :gap input-list))
+   ((string-starts-with "#COVER:" (first input-list))
+    (add-str-prop-and-recurse "#COVER:" :cover input-list))
+   ((string-starts-with "#BACKGROUND:" (first input-list))
+    (add-str-prop-and-recurse "#BACKGROUND:" :background input-list))
+   ((string-starts-with "#GENRE:" (first input-list))
+    (add-str-prop-and-recurse "#GENRE:" :genre input-list))
+   ((string-starts-with "#RELATIVE:" (first input-list))
+    (add-bool-prop-and-recurse "#RELATIVE:" :relative input-list))
+   ((string-starts-with "#EDITION:" (first input-list))
+    (add-str-prop-and-recurse "#EDITION:" :edition input-list))
+   ((string-starts-with "#LANGUAGE:" (first input-list))
+    (add-str-prop-and-recurse "#LANGUAGE:" :language input-list))
+   ((string-starts-with "#VIDEO:" (first input-list))
+    (add-num-prop-and-recurse "#VIDEO:" :video input-list))
+   ((string-starts-with "#VIDEOGAP:" (first input-list))
+    (add-num-prop-and-recurse "#VIDEOGAP:" :videogap input-list))
+   ((string-starts-with "#START:" (first input-list))
+    (add-num-prop-and-recurse "#START:" :start input-list))
+   ((or (string-starts-with ":" (first input-list))
+	(string-starts-with "*" (first input-list))
+	(string-starts-with "F" (first input-list))
+	(string-starts-with "-" (first input-list)))
+    (list :notes (parse-ultrastar-notes input-list)))
+   (T (error 'invalid-song-file-line :text (first input-list)))))
+
+(defun add-str-prop-and-recurse (string-start keyword input-list)
+  (cons keyword
+	(cons (string-chomp string-start (first input-list))
+	      (parse-ultrastar-lines (rest input-list)))))
+
+; Allows junk because BPM sometimes has a comma and a part after the comma. I haven't been able to find any
+; documentation for what that comma is about. I'm currently throwing it out.
+(defun add-num-prop-and-recurse (string-start keyword input-list)
+  (cons keyword
+	(cons (parse-integer (string-chomp string-start (first input-list)) :junk-allowed T)
+	      (parse-ultrastar-lines (rest input-list)))))
+
+(defun add-bool-prop-and-recurse (string-start keyword input-list)
+  (cons keyword
+	(cons (eql (string-chomp string-start (first input-list)) "yes")
+		      (parse-ultrastar-lines (rest input-list)))))
+
+(is (parse-ultrastar-lines '("#ARTIST:Joe Blow")) '(:artist "Joe Blow"))
+(is (parse-ultrastar-lines '("#ARTIST:Joe Blow"
+			     "#TITLE:Country Blues")) '(:artist "Joe Blow" :title "Country Blues"))
+(is (parse-ultrastar-lines '("#ARTIST:Joe Blow"
+			     "#TITLE:Country Blues"
+			     ": 0 4 20 I just"
+			     "* 5 11 21  can't believe "
+			     "E"))
+    '(:artist "Joe Blow" :title "Country Blues" :notes ((:normal 0 4 20 "I just") (:golden 5 11 21 " can't believe "))))
+
+; I should also test errors, but the test framework does not currently support it
+
+; parse-ultrastar-string: string -> ultrastar-data
+; purpose: consumes a string representing in the format of
+; an ultrastar song file, and produces structured ultrastar-data
+; representing the contents of the file.
+(defun parse-ultrastar-string (input-string)
+  (parse-ultrastar-lines (split-sequence:split-sequence #\Newline input-string)))
+
+; parse-ultrastar-file: string -> ultrastar-data
+; purpose: consumes a filename, and produces ultrastar-data representing
+; the contents of that file.
+(defun parse-ultrastar-file (file-name)
+  (parse-ultrastar-string (read-file file-name)))
+
+(is (generate-ultrastar-string (parse-ultrastar-file "Pornophonique - Space Invaders.txt"))
+    (read-file "Pornophonique - Space Invaders.txt"))
 
 (print-test-plan)
