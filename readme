@@ -1,0 +1,18 @@
+cl-ultrastar-file-manipulation
+------------------------------
+
+  This work is licensed under the GNU GPLv3 or any later version.
+  The latest code from this project should be available at:
+  http://github.com/brobinson9999/cl-ultrastar-file-manipulation
+
+  cl-ultrastar-file-manipulation is a library for working with files in the Ultrastar file format. Functions are provided which can parse Ultrastar files into plists, and generate Ultrastar files from plists.
+
+Dependencies
+  cl-ultrastar-file-manipulation has no external dependencies.
+
+  The unit tests require cl-tap-producerX.
+
+  This module has only been tested on GNU CLISP.
+
+Usage
+  See ultrastar-file-manipulation.test.lisp for the unit tests. These should give some idea of how to use the functions.
