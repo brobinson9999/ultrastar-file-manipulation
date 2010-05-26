@@ -44,6 +44,8 @@
 (is (parse-ultrastar-note ": 0 4 20 I just") '(:normal 0 4 20 "I just"))
 (is (parse-ultrastar-note "* 20 24 200 I just") '(:golden 20 24 200 "I just"))
 
+(is-condition (parse-ultrastar-note "WTF? 0 4") (make-condition 'invalid-song-file-line :text "WTF?"))
+
 (is (parse-ultrastar-lines '("#ARTIST:Joe Blow")) '(:artist "Joe Blow"))
 (is (parse-ultrastar-lines '("#ARTIST:Joe Blow"
 			     "#TITLE:Country Blues")) '(:artist "Joe Blow" :title "Country Blues"))
@@ -54,9 +56,10 @@
 			     "E"))
     '(:artist "Joe Blow" :title "Country Blues" :notes ((:normal 0 4 20 "I just") (:golden 5 11 21 " can't believe "))))
 
-; I should also test errors, but the test framework does not currently support it
+(is-condition (parse-ultrastar-lines '("#ARTIST:Joe Blow"
+				       "WTF? 0 4")) (make-condition 'invalid-song-file-line :text "WTF? 0 4"))
 
-(is (generate-ultrastar-string (parse-ultrastar-file "Pornophonique - Space Invaders.txt"))
-    (read-file "Pornophonique - Space Invaders.txt"))
+;(is (generate-ultrastar-string (parse-ultrastar-file "Pornophonique - Space Invaders.txt"))
+;    (read-file "Pornophonique - Space Invaders.txt"))
 
 (print-test-plan)
