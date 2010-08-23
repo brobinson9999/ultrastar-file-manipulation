@@ -1,4 +1,4 @@
-#!/usr/local/bin/clisp
+#!/usr/bin/clisp
 
 (load "ultrastar-file-manipulation.lisp")
 (load "../cl-tap-producerX/cl-tap-framework.lisp")
@@ -47,6 +47,7 @@
 (is-condition (parse-ultrastar-note "WTF? 0 4") (make-condition 'invalid-song-file-line :text "WTF?"))
 
 (is (parse-ultrastar-lines '("#ARTIST:Joe Blow")) '(:artist "Joe Blow"))
+(is (parse-ultrastar-lines '("#VIDEO:Lord Shenanigans - Pimp Cane[VD#0].mpg")) '(:video "Lord Shenanigans - Pimp Cane[VD#0].mpg"))
 (is (parse-ultrastar-lines '("#ARTIST:Joe Blow"
 			     "#TITLE:Country Blues")) '(:artist "Joe Blow" :title "Country Blues"))
 (is (parse-ultrastar-lines '("#ARTIST:Joe Blow"

@@ -158,7 +158,7 @@
    ((string-starts-with "#LANGUAGE:" (first input-list))
     (add-str-prop-and-recurse "#LANGUAGE:" :language input-list))
    ((string-starts-with "#VIDEO:" (first input-list))
-    (add-num-prop-and-recurse "#VIDEO:" :video input-list))
+    (add-str-prop-and-recurse "#VIDEO:" :video input-list))
    ((string-starts-with "#VIDEOGAP:" (first input-list))
     (add-num-prop-and-recurse "#VIDEOGAP:" :videogap input-list))
    ((string-starts-with "#START:" (first input-list))
